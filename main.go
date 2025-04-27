@@ -25,7 +25,7 @@ func main() {
 		return scanner.Text(), true
 	}
 
-	tools := []ToolDefinition{ReadFileDefinition, ListFilesDefinition, EditFileDefinition}
+	tools := []ToolDefinition{ReadFileDefinition, ListFilesDefinition, EditFileDefinition, MakeDirDefinition, DeleteDirDefinition}
 	agent := NewAgent(&client, getUserMessage, tools)
 	err := agent.Run(context.TODO())
 	if err != nil {
@@ -306,4 +306,78 @@ func createNewFile(filePath, content string) (string, error) {
 	}
 
 	return fmt.Sprintf("Successfully created file %s", filePath), nil
+}
+
+var MakeDirDefinition = ToolDefinition{
+	Name:        "make_dir",
+	Description: "Creates a new directory at the specified path. If parent directories don't exist, they will be created as well.",
+	InputSchema: MakeDirInputSchema,
+	Function:    MakeDir,
+}
+
+type MakeDirInput struct {
+	Path string `json:"path" jsonschema_description:"The relative path of the directory to create"`
+}
+
+var MakeDirInputSchema = GenerateSchema[MakeDirInput]()
+
+func MakeDir(input json.RawMessage) (string, error) {
+	makeDirInput := MakeDirInput{}
+	err := json.Unmarshal(input, &makeDirInput)
+	if err != nil {
+		return "", err
+	}
+
+	if makeDirInput.Path == "" {
+		return "", fmt.Errorf("path cannot be empty")
+	}
+
+	err = os.MkdirAll(makeDirInput.Path, 0755)
+	if err != nil {
+		return "", fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	return fmt.Sprintf("Successfully created directory %s", makeDirInput.Path), nil
+}
+
+var DeleteDirDefinition = ToolDefinition{
+	Name:        "delete_dir",
+	Description: "Deletes a directory and all its contents recursively. Use with caution as this operation cannot be undone.",
+	InputSchema: DeleteDirInputSchema,
+	Function:    DeleteDir,
+}
+
+type DeleteDirInput struct {
+	Path string `json:"path" jsonschema_description:"The relative path of the directory to delete"`
+}
+
+var DeleteDirInputSchema = GenerateSchema[DeleteDirInput]()
+
+func DeleteDir(input json.RawMessage) (string, error) {
+	deleteDirInput := DeleteDirInput{}
+	err := json.Unmarshal(input, &deleteDirInput)
+	if err != nil {
+		return "", err
+	}
+
+	if deleteDirInput.Path == "" {
+		return "", fmt.Errorf("path cannot be empty")
+	}
+
+	// Check if the path exists
+	_, err = os.Stat(deleteDirInput.Path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("directory does not exist: %s", deleteDirInput.Path)
+		}
+		return "", fmt.Errorf("error checking directory: %w", err)
+	}
+
+	// Remove the directory and all its contents
+	err = os.RemoveAll(deleteDirInput.Path)
+	if err != nil {
+		return "", fmt.Errorf("failed to delete directory: %w", err)
+	}
+
+	return fmt.Sprintf("Successfully deleted directory %s and all its contents", deleteDirInput.Path), nil
 }

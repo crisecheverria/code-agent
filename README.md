@@ -72,3 +72,13 @@ The interface highlights different parts of the conversation:
 
 - github.com/anthropics/anthropic-sdk-go
 - github.com/invopop/jsonschema
+
+## Recent Updates
+
+### File System Management Enhancements
+- Added support for directory creation with the `make_dir` tool
+- Added support for directory deletion with the `delete_dir` tool
+- Improved file handling capabilities in the AI agent
+- Enhanced error messaging for file operations
+
+These updates allow the AI agent to perform more comprehensive file system operations, including creating and removing directories along with managing files within them.
