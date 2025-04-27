@@ -54,6 +54,38 @@ To create a new file:
 tool: edit_file({"path":"new_file.txt","old_str":"","new_str":"This is a new file content"})
 ```
 
+## Installation and Setup
+
+### Prerequisites
+1. Go programming language (Go 1.18 or later recommended)
+2. Anthropic API key for accessing Claude AI
+
+### Setup
+1. Clone this repository to your local machine
+2. Navigate to the project directory
+3. Set up your Anthropic API key as an environment variable:
+   ```
+   export ANTHROPIC_API_KEY=your_api_key_here
+   ```
+
+## Running the AI Agent
+
+To run the AI agent, use one of the following methods:
+
+### Method 1: Using Go Run
+```bash
+go run main.go
+```
+
+### Method 2: Build and Execute
+```bash
+# Build the executable
+go build -o claude-agent
+
+# Run the executable
+./claude-agent
+```
+
 ## Usage
 
 Once the application is running, you can chat with Claude in your terminal. Claude can use the above tools to help with file operations.
