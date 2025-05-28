@@ -9,8 +9,11 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/anthropics/anthropic-sdk-go"
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/invopop/jsonschema"
 )
 
@@ -25,7 +28,18 @@ func main() {
 		return scanner.Text(), true
 	}
 
-	tools := []ToolDefinition{ReadFileDefinition, ListFilesDefinition, EditFileDefinition, MakeDirDefinition, DeleteDirDefinition}
+	tools := []ToolDefinition{
+		ReadFileDefinition,
+		ListFilesDefinition,
+		EditFileDefinition,
+		MakeDirDefinition,
+		DeleteDirDefinition,
+		GitStatusDefinition,
+		GitAddDefinition,
+		GitCommitDefinition,
+		GitPushDefinition,
+		GitPullDefinition,
+	}
 	agent := NewAgent(&client, getUserMessage, tools)
 	err := agent.Run(context.TODO())
 	if err != nil {
@@ -352,6 +366,163 @@ type DeleteDirInput struct {
 }
 
 var DeleteDirInputSchema = GenerateSchema[DeleteDirInput]()
+
+var GitStatusDefinition = ToolDefinition{
+	Name:        "git_status",
+	Description: "Show the working tree status, including staged, unstaged and untracked files",
+	InputSchema: GenerateSchema[struct{}](),
+	Function:    GitStatus,
+}
+
+type GitAddInput struct {
+	Path string `json:"path" jsonschema_description:"Path of file(s) to stage. Use '.' for all files"`
+}
+
+var GitAddDefinition = ToolDefinition{
+	Name:        "git_add",
+	Description: "Stage changes for commit",
+	InputSchema: GenerateSchema[GitAddInput](),
+	Function:    GitAdd,
+}
+
+type GitCommitInput struct {
+	Message string `json:"message" jsonschema_description:"Commit message"`
+}
+
+var GitCommitDefinition = ToolDefinition{
+	Name:        "git_commit",
+	Description: "Commit staged changes",
+	InputSchema: GenerateSchema[GitCommitInput](),
+	Function:    GitCommit,
+}
+
+var GitPushDefinition = ToolDefinition{
+	Name:        "git_push",
+	Description: "Push commits to remote repository",
+	InputSchema: GenerateSchema[struct{}](),
+	Function:    GitPush,
+}
+
+var GitPullDefinition = ToolDefinition{
+	Name:        "git_pull",
+	Description: "Pull changes from remote repository",
+	InputSchema: GenerateSchema[struct{}](),
+	Function:    GitPull,
+}
+
+func GitStatus(input json.RawMessage) (string, error) {
+	repo, err := git.PlainOpen(".")
+	if err != nil {
+		return "", fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	status, err := worktree.Status()
+	if err != nil {
+		return "", fmt.Errorf("failed to get status: %w", err)
+	}
+
+	return status.String(), nil
+}
+
+func GitAdd(input json.RawMessage) (string, error) {
+	var addInput GitAddInput
+	if err := json.Unmarshal(input, &addInput); err != nil {
+		return "", err
+	}
+
+	repo, err := git.PlainOpen(".")
+	if err != nil {
+		return "", fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	err = worktree.AddWithOptions(&git.AddOptions{
+		Path: addInput.Path,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to add files: %w", err)
+	}
+
+	return fmt.Sprintf("Successfully staged changes for: %s", addInput.Path), nil
+}
+
+func GitCommit(input json.RawMessage) (string, error) {
+	var commitInput GitCommitInput
+	if err := json.Unmarshal(input, &commitInput); err != nil {
+		return "", err
+	}
+
+	repo, err := git.PlainOpen(".")
+	if err != nil {
+		return "", fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	commit, err := worktree.Commit(commitInput.Message, &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "AI Agent",
+			Email: "ai@agent.local",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to commit: %w", err)
+	}
+
+	return fmt.Sprintf("Successfully created commit: %s", commit.String()), nil
+}
+
+func GitPush(input json.RawMessage) (string, error) {
+	repo, err := git.PlainOpen(".")
+	if err != nil {
+		return "", fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	err = repo.Push(&git.PushOptions{})
+	if err != nil {
+		if err == git.NoErrAlreadyUpToDate {
+			return "Everything up-to-date", nil
+		}
+		return "", fmt.Errorf("failed to push: %w", err)
+	}
+
+	return "Successfully pushed changes to remote", nil
+}
+
+func GitPull(input json.RawMessage) (string, error) {
+	repo, err := git.PlainOpen(".")
+	if err != nil {
+		return "", fmt.Errorf("failed to open repository: %w", err)
+	}
+
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	err = worktree.Pull(&git.PullOptions{})
+	if err != nil {
+		if err == git.NoErrAlreadyUpToDate {
+			return "Already up-to-date", nil
+		}
+		return "", fmt.Errorf("failed to pull: %w", err)
+	}
+
+	return "Successfully pulled changes from remote", nil
+}
 
 func DeleteDir(input json.RawMessage) (string, error) {
 	deleteDirInput := DeleteDirInput{}
