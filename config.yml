@@ -1,0 +1,9 @@
+# Agent Configuration
+# This file controls various behaviors of the AI agent
+
+# Git Configuration
+git:
+  # Whether the agent should automatically commit changes when using git tools
+  # Set to false to disable auto-commit behavior
+  auto_commit: false
+

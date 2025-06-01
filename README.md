@@ -54,6 +54,46 @@ To create a new file:
 tool: edit_file({"path":"new_file.txt","old_str":"","new_str":"This is a new file content"})
 ```
 
+### 4. make_dir
+
+Creates a new directory at the specified path. If parent directories don't exist, they will be created as well.
+
+**Parameters:**
+- `path`: The relative path of the directory to create
+
+### 5. delete_dir
+
+Deletes a directory and all its contents recursively. Use with caution as this operation cannot be undone.
+
+**Parameters:**
+- `path`: The relative path of the directory to delete
+
+### 6. git_status
+
+Shows the working tree status, including staged, unstaged and untracked files.
+
+### 7. git_add
+
+Stage changes for commit. **Note**: This tool respects the `auto_commit` configuration setting.
+
+**Parameters:**
+- `path`: Path of file(s) to stage. Use '.' for all files
+
+### 8. git_commit
+
+Commit staged changes. **Note**: This tool respects the `auto_commit` configuration setting.
+
+**Parameters:**
+- `message`: Commit message
+
+### 9. git_push
+
+Push commits to remote repository.
+
+### 10. git_pull
+
+Pull changes from remote repository.
+
 ## Installation and Setup
 
 ### Prerequisites
@@ -67,6 +107,31 @@ tool: edit_file({"path":"new_file.txt","old_str":"","new_str":"This is a new fil
    ```
    export ANTHROPIC_API_KEY=your_api_key_here
    ```
+
+## Configuration
+
+The agent can be configured using a `config.yml` file in the project directory. If no configuration file exists, the agent will use default settings.
+
+### Git Auto-Commit Configuration
+
+You can control whether Claude can use git staging and commit tools:
+
+```yaml
+# config.yml
+git:
+  auto_commit: true  # Set to false to disable git_add and git_commit tools
+```
+
+**When `auto_commit: true` (default)**:
+- Claude can use `git_add` to stage files
+- Claude can use `git_commit` to create commits
+- Claude has full control over git operations
+
+**When `auto_commit: false`**:
+- `git_add` and `git_commit` tools will return error messages
+- Claude cannot stage files or create commits
+- `git_status`, `git_push`, and `git_pull` remain available
+- Useful for environments where you want manual control over commits
 
 ## Running the AI Agent
 
@@ -104,8 +169,16 @@ The interface highlights different parts of the conversation:
 
 - github.com/anthropics/anthropic-sdk-go
 - github.com/invopop/jsonschema
+- github.com/go-git/go-git/v5
+- gopkg.in/yaml.v3
 
 ## Recent Updates
+
+### Configuration System
+- Added `config.yml` support for controlling agent behavior
+- Implemented git auto-commit configuration (`git.auto_commit`)
+- Users can now disable git staging and commit operations when needed
+- Configuration defaults to allowing git operations if no config file exists
 
 ### File System Management Enhancements
 - Added support for directory creation with the `make_dir` tool
@@ -113,4 +186,9 @@ The interface highlights different parts of the conversation:
 - Improved file handling capabilities in the AI agent
 - Enhanced error messaging for file operations
 
-These updates allow the AI agent to perform more comprehensive file system operations, including creating and removing directories along with managing files within them.
+### Git Integration
+- Added comprehensive git tools: `git_status`, `git_add`, `git_commit`, `git_push`, `git_pull`
+- Git operations respect configuration settings for better control
+- Commits are created with "AI Agent" as the author
+
+These updates allow the AI agent to perform comprehensive file system and git operations while giving users control over potentially destructive actions like automatic commits.

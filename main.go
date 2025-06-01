@@ -15,9 +15,16 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/invopop/jsonschema"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
+	config, err := LoadConfig()
+	if err != nil {
+		fmt.Printf("Error loading config: %s\n", err.Error())
+		return
+	}
+
 	client := anthropic.NewClient()
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -35,23 +42,24 @@ func main() {
 		MakeDirDefinition,
 		DeleteDirDefinition,
 		GitStatusDefinition,
-		GitAddDefinition,
-		GitCommitDefinition,
+		NewGitAddDefinition(config),
+		NewGitCommitDefinition(config),
 		GitPushDefinition,
 		GitPullDefinition,
 	}
-	agent := NewAgent(&client, getUserMessage, tools)
-	err := agent.Run(context.TODO())
+	agent := NewAgent(&client, getUserMessage, tools, config)
+	err = agent.Run(context.TODO())
 	if err != nil {
 		fmt.Printf("Error: %s\n", err.Error())
 	}
 }
 
-func NewAgent(client *anthropic.Client, getUserMessage func() (string, bool), tools []ToolDefinition) *Agent {
+func NewAgent(client *anthropic.Client, getUserMessage func() (string, bool), tools []ToolDefinition, config *Config) *Agent {
 	return &Agent{
 		client:         client,
 		getUserMessage: getUserMessage,
 		tools:          tools,
+		config:         config,
 	}
 }
 
@@ -59,6 +67,7 @@ type Agent struct {
 	client         *anthropic.Client
 	getUserMessage func() (string, bool)
 	tools          []ToolDefinition
+	config         *Config
 }
 
 func (a *Agent) Run(ctx context.Context) error {
@@ -369,7 +378,7 @@ var DeleteDirInputSchema = GenerateSchema[DeleteDirInput]()
 
 var GitStatusDefinition = ToolDefinition{
 	Name:        "git_status",
-	Description: "Show the working tree status, including staged, unstaged and untracked files",
+	Description: "Show the working tree status, including staged, unstaged and untracked files. If current directory does not have .git ask user permission before initialize it.",
 	InputSchema: GenerateSchema[struct{}](),
 	Function:    GitStatus,
 }
@@ -378,22 +387,30 @@ type GitAddInput struct {
 	Path string `json:"path" jsonschema_description:"Path of file(s) to stage. Use '.' for all files"`
 }
 
-var GitAddDefinition = ToolDefinition{
-	Name:        "git_add",
-	Description: "Stage changes for commit",
-	InputSchema: GenerateSchema[GitAddInput](),
-	Function:    GitAdd,
+func NewGitAddDefinition(config *Config) ToolDefinition {
+	return ToolDefinition{
+		Name:        "git_add",
+		Description: "Stage changes for commit",
+		InputSchema: GenerateSchema[GitAddInput](),
+		Function:    func(input json.RawMessage) (string, error) {
+			return GitAdd(input, config)
+		},
+	}
 }
 
 type GitCommitInput struct {
 	Message string `json:"message" jsonschema_description:"Commit message"`
 }
 
-var GitCommitDefinition = ToolDefinition{
-	Name:        "git_commit",
-	Description: "Commit staged changes",
-	InputSchema: GenerateSchema[GitCommitInput](),
-	Function:    GitCommit,
+func NewGitCommitDefinition(config *Config) ToolDefinition {
+	return ToolDefinition{
+		Name:        "git_commit",
+		Description: "Commit staged changes",
+		InputSchema: GenerateSchema[GitCommitInput](),
+		Function:    func(input json.RawMessage) (string, error) {
+			return GitCommit(input, config)
+		},
+	}
 }
 
 var GitPushDefinition = ToolDefinition{
@@ -429,10 +446,14 @@ func GitStatus(input json.RawMessage) (string, error) {
 	return status.String(), nil
 }
 
-func GitAdd(input json.RawMessage) (string, error) {
+func GitAdd(input json.RawMessage, config *Config) (string, error) {
 	var addInput GitAddInput
 	if err := json.Unmarshal(input, &addInput); err != nil {
 		return "", err
+	}
+
+	if !config.Git.AutoCommit {
+		return "", fmt.Errorf("git auto-commit is disabled in config.yml")
 	}
 
 	repo, err := git.PlainOpen(".")
@@ -455,10 +476,14 @@ func GitAdd(input json.RawMessage) (string, error) {
 	return fmt.Sprintf("Successfully staged changes for: %s", addInput.Path), nil
 }
 
-func GitCommit(input json.RawMessage) (string, error) {
+func GitCommit(input json.RawMessage, config *Config) (string, error) {
 	var commitInput GitCommitInput
 	if err := json.Unmarshal(input, &commitInput); err != nil {
 		return "", err
+	}
+
+	if !config.Git.AutoCommit {
+		return "", fmt.Errorf("git auto-commit is disabled in config.yml")
 	}
 
 	repo, err := git.PlainOpen(".")
@@ -551,4 +576,30 @@ func DeleteDir(input json.RawMessage) (string, error) {
 	}
 
 	return fmt.Sprintf("Successfully deleted directory %s and all its contents", deleteDirInput.Path), nil
+}
+
+type Config struct {
+	Git struct {
+		AutoCommit bool `yaml:"auto_commit"`
+	} `yaml:"git"`
+}
+
+func LoadConfig() (*Config, error) {
+	config := &Config{}
+	
+	file, err := os.ReadFile("config.yml")
+	if err != nil {
+		if os.IsNotExist(err) {
+			config.Git.AutoCommit = true
+			return config, nil
+		}
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	err = yaml.Unmarshal(file, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	return config, nil
 }
