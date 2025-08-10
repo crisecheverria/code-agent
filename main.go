@@ -148,12 +148,24 @@ func (a *Agent) runInterface(ctx context.Context, conversation []anthropic.Messa
 		})
 	}
 
-	message, err := a.client.Messages.New(ctx, anthropic.MessageNewParams{
+	params := anthropic.MessageNewParams{
 		Model:     anthropic.ModelClaude3_7SonnetLatest,
 		MaxTokens: int64(1024),
 		Messages:  conversation,
 		Tools:     anthropicTools,
-	})
+	}
+
+	// Add system message if context file is configured
+	if contextContent := a.loadContextFile(); contextContent != "" {
+		params.System = []anthropic.TextBlockParam{
+			{
+				Type: "text",
+				Text: contextContent,
+			},
+		}
+	}
+
+	message, err := a.client.Messages.New(ctx, params)
 
 	return message, err
 }
@@ -392,7 +404,7 @@ func NewGitAddDefinition(config *Config) ToolDefinition {
 		Name:        "git_add",
 		Description: "Stage changes for commit",
 		InputSchema: GenerateSchema[GitAddInput](),
-		Function:    func(input json.RawMessage) (string, error) {
+		Function: func(input json.RawMessage) (string, error) {
 			return GitAdd(input, config)
 		},
 	}
@@ -407,7 +419,7 @@ func NewGitCommitDefinition(config *Config) ToolDefinition {
 		Name:        "git_commit",
 		Description: "Commit staged changes",
 		InputSchema: GenerateSchema[GitCommitInput](),
-		Function:    func(input json.RawMessage) (string, error) {
+		Function: func(input json.RawMessage) (string, error) {
 			return GitCommit(input, config)
 		},
 	}
@@ -582,11 +594,14 @@ type Config struct {
 	Git struct {
 		AutoCommit bool `yaml:"auto_commit"`
 	} `yaml:"git"`
+	Context struct {
+		ReadOnlyFile string `yaml:"read_only_file"`
+	} `yaml:"context"`
 }
 
 func LoadConfig() (*Config, error) {
 	config := &Config{}
-	
+
 	file, err := os.ReadFile("config.yml")
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -602,4 +617,28 @@ func LoadConfig() (*Config, error) {
 	}
 
 	return config, nil
+}
+
+func (a *Agent) loadContextFile() string {
+	if a.config.Context.ReadOnlyFile == "" {
+		return ""
+	}
+
+	content, err := os.ReadFile(a.config.Context.ReadOnlyFile)
+	if err != nil {
+		// Silently fail if file doesn't exist or can't be read
+		// This allows the agent to continue working without the context file
+		return ""
+	}
+
+	// Wrap the content with a clear indication of what it is
+	contextMessage := fmt.Sprintf(`Project Context (from %s):
+
+%s
+
+---
+
+This context provides information about the project structure, conventions, and guidelines. Use this information to better understand the codebase when responding to user requests.`, a.config.Context.ReadOnlyFile, string(content))
+
+	return contextMessage
 }

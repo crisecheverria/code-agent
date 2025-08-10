@@ -7,3 +7,10 @@ git:
   # Set to false to disable auto-commit behavior
   auto_commit: false
 
+# Context Configuration
+context:
+  # Read-only file to provide additional context to Claude
+  # This file will be passed as context to help Claude understand the project better
+  # Set to empty string or comment out to disable
+  read_only_file: "AGENT.md"
+
